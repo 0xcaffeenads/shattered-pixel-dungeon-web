@@ -789,7 +789,14 @@ public class GameScene extends PixelScene {
 	public static void endActorThread(){
 		if (actorThread != null && actorThread.isAlive()){
 			Actor.keepActorThreadAlive = false;
-			actorThread.interrupt();
+			if (DeviceCompat.isWeb()) {
+				// TeaVM can report a JavaError when interrupting a thread during monitor unwinding.
+				synchronized (actorThread) {
+					actorThread.notify();
+				}
+			} else {
+				actorThread.interrupt();
+			}
 		}
 	}
 
@@ -875,7 +882,19 @@ public class GameScene extends PixelScene {
 				actorThread = new Thread() {
 					@Override
 					public void run() {
-						Actor.process();
+						try {
+							Actor.process();
+						} catch (Throwable t) {
+							if (DeviceCompat.isWeb() && !Actor.keepActorThreadAlive) {
+								return;
+							}
+							if (t instanceof RuntimeException) {
+								throw (RuntimeException)t;
+							} else if (t instanceof Error) {
+								throw (Error)t;
+							}
+							throw new RuntimeException(t);
+						}
 					}
 				};
 
