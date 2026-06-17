@@ -12,6 +12,10 @@
 build/
 release/
 
+# Local browser-test artifacts
+.playwright-cli/
+output/
+
 # Local configuration file (sdk path, etc)
 local.properties
 
