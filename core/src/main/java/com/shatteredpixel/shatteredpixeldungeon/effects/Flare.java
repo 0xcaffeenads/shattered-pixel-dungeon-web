@@ -25,6 +25,7 @@ import com.shatteredpixel.shatteredpixeldungeon.sprites.CharSprite;
 import com.watabou.gltextures.SmartTexture;
 import com.watabou.gltextures.TextureCache;
 import com.watabou.glwrap.Blending;
+import com.watabou.glwrap.Vertexbuffer;
 import com.watabou.noosa.Game;
 import com.watabou.noosa.Group;
 import com.watabou.noosa.NoosaScript;
@@ -35,7 +36,6 @@ import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
-import java.nio.ShortBuffer;
 
 public class Flare extends Visual {
 	
@@ -47,7 +47,7 @@ public class Flare extends Visual {
 	private SmartTexture texture;
 	
 	private FloatBuffer vertices;
-	private ShortBuffer indices;
+	private Vertexbuffer vertexBuffer;
 	
 	private int nRays;
 	
@@ -64,44 +64,32 @@ public class Flare extends Visual {
 		angularSpeed = 180;
 		
 		vertices = ByteBuffer.
-			allocateDirect( (nRays * 2 + 1) * 4 * (Float.SIZE / 8) ).
+			allocateDirect( nRays * 3 * 4 * (Float.SIZE / 8) ).
 			order( ByteOrder.nativeOrder() ).
 			asFloatBuffer();
 		
-		indices = ByteBuffer.
-			allocateDirect( nRays * 3 * Short.SIZE / 8 ).
-			order( ByteOrder.nativeOrder() ).
-			asShortBuffer();
-		
 		float v[] = new float[4];
 		
-		v[0] = 0;
-		v[1] = 0;
-		v[2] = 0.25f;
-		v[3] = 0;
-		vertices.put( v );
-		
-		v[2] = 0.75f;
-		v[3] = 0;
-		
 		for (int i=0; i < nRays; i++) {
-			
+			putVertex(v, 0, 0, 0.25f, 0);
+
 			float a = i * 3.1415926f * 2 / nRays;
-			v[0] = (float)Math.cos( a ) * radius;
-			v[1] = (float)Math.sin( a ) * radius;
-			vertices.put( v );
+			putVertex(v, (float)Math.cos( a ) * radius, (float)Math.sin( a ) * radius, 0.75f, 0);
 			
 			a += 3.1415926f * 2 / nRays / 2;
-			v[0] = (float)Math.cos( a ) * radius;
-			v[1] = (float)Math.sin( a ) * radius;
-			vertices.put( v );
-			
-			indices.put( (short)0 );
-			indices.put( (short)(1 + i * 2) );
-			indices.put( (short)(2 + i * 2) );
+			putVertex(v, (float)Math.cos( a ) * radius, (float)Math.sin( a ) * radius, 0.75f, 0);
 		}
 
-		((Buffer)indices).position( 0 );
+		((Buffer)vertices).position( 0 );
+		vertexBuffer = new Vertexbuffer(vertices);
+	}
+
+	private void putVertex(float[] vertex, float x, float y, float u, float v) {
+		vertex[0] = x;
+		vertex[1] = y;
+		vertex[2] = u;
+		vertex[3] = v;
+		vertices.put(vertex);
 	}
 	
 	public Flare color( int color, boolean lightMode ) {
@@ -179,6 +167,6 @@ public class Flare extends Visual {
 			ra, ga, ba, aa );
 		
 		script.camera( camera );
-		script.drawElements( vertices, indices, nRays * 3 );
+		script.drawTriangles( vertexBuffer, nRays * 3 );
 	}
 }

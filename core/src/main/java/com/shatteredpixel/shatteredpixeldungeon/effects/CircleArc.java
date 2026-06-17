@@ -24,6 +24,7 @@ package com.shatteredpixel.shatteredpixeldungeon.effects;
 import com.watabou.gltextures.SmartTexture;
 import com.watabou.gltextures.TextureCache;
 import com.watabou.glwrap.Blending;
+import com.watabou.glwrap.Vertexbuffer;
 import com.watabou.noosa.Game;
 import com.watabou.noosa.Group;
 import com.watabou.noosa.NoosaScript;
@@ -34,7 +35,6 @@ import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
-import java.nio.ShortBuffer;
 
 public class CircleArc extends Visual {
 	
@@ -51,7 +51,7 @@ public class CircleArc extends Visual {
 
 	protected float[] vertices;
 	private FloatBuffer verticesBuffer;
-	private ShortBuffer indices;
+	private Vertexbuffer vertexBuffer;
 	
 	private int nTris;
 	private float rad;
@@ -68,15 +68,10 @@ public class CircleArc extends Visual {
 
 		vertices = new float[4];
 		verticesBuffer = ByteBuffer.
-				allocateDirect( (nTris * 2 + 1) * 4 * (Float.SIZE / 8) ).
+				allocateDirect( nTris * 3 * 4 * (Float.SIZE / 8) ).
 				order( ByteOrder.nativeOrder() ).
 				asFloatBuffer();
-		
-		indices = ByteBuffer.
-				allocateDirect( nTris * 3 * Short.SIZE / 8 ).
-				order( ByteOrder.nativeOrder() ).
-				asShortBuffer();
-		
+
 		sweep = 1f;
 		updateTriangles();
 	}
@@ -121,39 +116,35 @@ public class CircleArc extends Visual {
 		
 		dirty = false;
 		
-		((Buffer)indices).position( 0 );
 		((Buffer)verticesBuffer).position( 0 );
-		
-		vertices[0] = 0;
-		vertices[1] = 0;
-		vertices[2] = 0.25f;
-		vertices[3] = 0;
-		verticesBuffer.put( vertices );
-
-		vertices[2] = 0.75f;
-		vertices[3] = 0;
 		
 		//starting position is very top by default, use angle to adjust this.
 		double start = 2 * (Math.PI - Math.PI*sweep) - Math.PI/2.0;
 		
 		for (int i = 0; i < nTris; i++) {
-			
+			putVertex(0, 0, 0.25f, 0);
+
 			double a = start + i * Math.PI * 2 / nTris * sweep;
-			vertices[0] = (float)Math.cos( a ) * rad;
-			vertices[1] = (float)Math.sin( a ) * rad;
-			verticesBuffer.put( vertices );
+			putVertex((float)Math.cos( a ) * rad, (float)Math.sin( a ) * rad, 0.75f, 0);
 			
 			a += 3.1415926f * 2 / nTris * sweep;
-			vertices[0] = (float)Math.cos( a ) * rad;
-			vertices[1] = (float)Math.sin( a ) * rad;
-			verticesBuffer.put( vertices );
-			
-			indices.put( (short)0 );
-			indices.put( (short)(1 + i * 2) );
-			indices.put( (short)(2 + i * 2) );
+			putVertex((float)Math.cos( a ) * rad, (float)Math.sin( a ) * rad, 0.75f, 0);
 		}
 
-		((Buffer)indices).position( 0 );
+		((Buffer)verticesBuffer).position( 0 );
+		if (vertexBuffer == null) {
+			vertexBuffer = new Vertexbuffer(verticesBuffer);
+		} else {
+			vertexBuffer.updateVertices(verticesBuffer);
+		}
+	}
+
+	private void putVertex(float x, float y, float u, float v) {
+		vertices[0] = x;
+		vertices[1] = y;
+		vertices[2] = u;
+		vertices[3] = v;
+		verticesBuffer.put(vertices);
 	}
 	
 	@Override
@@ -192,7 +183,7 @@ public class CircleArc extends Visual {
 				ra, ga, ba, aa );
 		
 		script.camera( camera );
-		script.drawElements( verticesBuffer, indices, nTris * 3 );
+		script.drawTriangles( vertexBuffer, nTris * 3 );
 		
 		if (lightMode) Blending.setNormalMode();
 	}

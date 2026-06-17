@@ -142,6 +142,7 @@ import com.watabou.noosa.audio.Sample;
 import com.watabou.noosa.particles.Emitter;
 import com.watabou.noosa.tweeners.Tweener;
 import com.watabou.utils.Callback;
+import com.watabou.utils.DeviceCompat;
 import com.watabou.utils.GameMath;
 import com.watabou.utils.PlatformSupport;
 import com.watabou.utils.Point;
@@ -768,7 +769,9 @@ public class GameScene extends PixelScene {
 	public void destroy() {
 		
 		//tell the actor thread to finish, then wait for it to complete any actions it may be doing.
-		if (!waitForActorThread( 4500, true )){
+		if (DeviceCompat.isWeb()) {
+			endActorThread();
+		} else if (!waitForActorThread( 4500, true )){
 			Throwable t = new Throwable();
 			t.setStackTrace(actorThread.getStackTrace());
 			throw new RuntimeException("timeout waiting for actor thread! ", t);
@@ -808,7 +811,11 @@ public class GameScene extends PixelScene {
 	@Override
 	public synchronized void onPause() {
 		try {
-			if (!Dungeon.hero.ready) waitForActorThread(500, false);
+			if (DeviceCompat.isWeb() && Actor.processing()) {
+				return;
+			} else if (!Dungeon.hero.ready) {
+				waitForActorThread(500, false);
+			}
 			Dungeon.saveAll();
 			Badges.saveGlobal();
 			Journal.saveGlobal();
