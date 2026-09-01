@@ -1,0 +1,128 @@
+name: Manual Build
+
+# Bu workflow SADECE elle (Actions sekmesinden "Run workflow" ile) tetiklenir.
+# push/pull_request gibi otomatik tetikleyici yok.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Derlenecek hedef (repo bu hedefleri destekliyor)"
+        required: true
+        type: choice
+        default: web
+        options:
+          - web               # TeaVM tarayici build -> web/build/dist/webapp
+          - android            # Debug APK (imzasiz) -> android/build/outputs/apk/debug
+          - desktop-windows    # jpackage Windows image -> windows-latest runner
+          - desktop-linux      # jpackage Linux image   -> ubuntu-latest runner
+          - desktop-macos      # jpackage macOS image    -> macos-latest runner
+
+# Not: iOS burada listelenmiyor. iOS build'i (robovm + createIPA) Xcode ve
+# Apple imzalama sertifikalari gerektirir, bu secret'lar olmadan CI'da
+# calismaz. Istersen ayri bir workflow olarak, kendi Apple sertifikalarinla
+# ekleyebiliriz.
+
+jobs:
+  # 1) Secilen hedefe gore hangi isletim sisteminde calisilacagini belirle.
+  #    Boylece tek bir "build" job'u, secime gore dogru runner'a atanir ve
+  #    secilmeyen hedefler icin hic runner harcanmaz.
+  resolve-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      runner: ${{ steps.map.outputs.runner }}
+    steps:
+      - id: map
+        shell: bash
+        run: |
+          case "${{ inputs.target }}" in
+            web)              echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT" ;;
+            android)          echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT" ;;
+            desktop-windows)  echo "runner=windows-latest" >> "$GITHUB_OUTPUT" ;;
+            desktop-linux)    echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT" ;;
+            desktop-macos)    echo "runner=macos-latest" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "Bilinmeyen hedef: ${{ inputs.target }}" >&2
+              exit 1
+              ;;
+          esac
+
+  build:
+    needs: resolve-runner
+    runs-on: ${{ needs.resolve-runner.outputs.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        if: inputs.target == 'android'
+        uses: android-actions/setup-android@v3
+        with:
+          # compileSdk / targetSdk build.gradle icinde 36 (Android 15) olarak
+          # tanimli; gerekli platform ve build-tools'u burada garanti altina al.
+          packages: "platforms;android-36 build-tools;36.0.0 platform-tools"
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ inputs.target }}-${{ hashFiles('**/*.gradle', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-${{ inputs.target }}-
+            gradle-${{ runner.os }}-
+
+      - name: Grant execute permission for gradlew
+        if: runner.os != 'Windows'
+        run: chmod +x gradlew
+
+      # --- WEB (TeaVM) ---
+      - name: Build web (TeaVM)
+        if: inputs.target == 'web'
+        shell: bash
+        run: ./gradlew web:webBuild --no-daemon
+
+      # --- ANDROID (debug APK, imzasiz) ---
+      - name: Build Android debug APK
+        if: inputs.target == 'android'
+        shell: bash
+        run: ./gradlew android:assembleDebug --no-daemon
+
+      # --- DESKTOP (Windows / Linux / macOS) ---
+      # desktop/build.gradle secili hedef isletim sistemine gore otomatik
+      # olarak dogru jpackage platformunu (win/linux/mac) secer; bu yuzden
+      # burada sadece runner'in isletim sistemine gore ayni komut calisir.
+      - name: Build desktop image (jpackage)
+        if: startsWith(inputs.target, 'desktop-')
+        shell: bash
+        run: ./gradlew desktop:jpackageImage --no-daemon
+
+      # --- Cikti yollarini hedefe gore belirle ---
+      - name: Resolve artifact path
+        id: artifact
+        shell: bash
+        run: |
+          case "${{ inputs.target }}" in
+            web)
+              echo "path=web/build/dist/webapp" >> "$GITHUB_OUTPUT"
+              ;;
+            android)
+              echo "path=android/build/outputs/apk/debug" >> "$GITHUB_OUTPUT"
+              ;;
+            desktop-windows|desktop-linux|desktop-macos)
+              echo "path=desktop/build/jpackage" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: spd-${{ inputs.target }}
+          path: ${{ steps.artifact.outputs.path }}
+          if-no-files-found: error
